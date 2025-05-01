@@ -47,11 +47,11 @@ void ButtonInit(void)
 {
     // initialize a general purpose timer for periodic interrupts
     SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);
-    TimerDisable(TIMER0_BASE, TIMER_BOTH);
-    TimerConfigure(TIMER0_BASE, TIMER_CFG_PERIODIC);
-    TimerLoadSet(TIMER0_BASE, TIMER_A, roundf((float)gSystemClock / BUTTON_SCAN_RATE) - 1);
-    TimerIntEnable(TIMER0_BASE, TIMER_TIMA_TIMEOUT);
-    TimerEnable(TIMER0_BASE, TIMER_BOTH);
+    TimerDisable(TIMER4_BASE, TIMER_BOTH);
+    TimerConfigure(TIMER4_BASE, TIMER_CFG_PERIODIC);
+    TimerLoadSet(TIMER4_BASE, TIMER_A, roundf((float)gSystemClock / BUTTON_SCAN_RATE) - 1);
+    TimerIntEnable(TIMER4_BASE, TIMER_TIMA_TIMEOUT);
+    TimerEnable(TIMER4_BASE, TIMER_BOTH);
 
     // initialize interrupt controller to respond to timer interrupts
     //IntPrioritySet(INT_TIMER0A, BUTTON_INT_PRIORITY);

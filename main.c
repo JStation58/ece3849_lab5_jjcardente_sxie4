@@ -77,9 +77,10 @@ int fft_mode = 0; //init false (0)
 
 uint32_t CurrentT = 0;
 uint32_t PrevT = 0;
-uint32_t Period = 0;
+float Period = 0;
 uint32_t FreqC = 0;
 #define PERIOD_TIME 0.0000000083f
+int Time_Difference = 0;
 
 
 uint32_t gSystemClock = 120000000; // [Hz] system clock frequency
@@ -245,6 +246,17 @@ void Button_Task(UArg arg1, UArg arg2) {
             operation = 't';
             Mailbox_post(mailbox0, &operation, BIOS_WAIT_FOREVER);
         }
+
+        if (presses & 128) { // EK-TM4C1294XL button 4 pressed
+            operation = '+';
+            Mailbox_post(mailbox0, &operation, BIOS_WAIT_FOREVER);
+        }
+
+        if (presses & 256) { // EK-TM4C1294XL button 4 pressed
+            operation = '-';
+            Mailbox_post(mailbox0, &operation, BIOS_WAIT_FOREVER);
+        }
+
     }
 }
 
@@ -268,6 +280,12 @@ void User_Input(UArg arg1, UArg arg2) {
                 }
             } else if (operation == 'f') {
                 fft_mode = fft_mode ^ 1;
+            } else if (operation == '+') {
+                Time_Difference += 10;
+                changePWM();
+            } else if (operation == '-') {
+                Time_Difference -= 10;
+                changePWM();
             }
         }
     }
@@ -288,8 +306,8 @@ void signal_init() {
     PWMClockSet(PWM0_BASE, PWM_SYSCLK_DIV_1);
     PWMGenConfigure(PWM0_BASE, PWM_GEN_1, PWM_GEN_MODE_DOWN | PWM_GEN_MODE_NO_SYNC);
     PWMGenPeriodSet(PWM0_BASE, PWM_GEN_1, roundf((float)gSystemClock/PWM_FREQUENCY));
-    PWMPulseWidthSet(PWM0_BASE, PWM_OUT_2,roundf((float)gSystemClock/PWM_FREQUENCY*0.4f));
-    PWMPulseWidthSet(PWM0_BASE, PWM_OUT_3, gSystemClock); //Added code for 5
+    PWMPulseWidthSet(PWM0_BASE, PWM_OUT_2, roundf((float)gSystemClock/PWM_FREQUENCY*0.4f));
+    PWMPulseWidthSet(PWM0_BASE, PWM_OUT_3, roundf((float)gSystemClock/PWM_FREQUENCY*0.4f)); //Added code for 5
     PWMOutputState(PWM0_BASE, PWM_OUT_2_BIT | PWM_OUT_3_BIT, true); //Modified code for 5
     PWMGenEnable(PWM0_BASE, PWM_GEN_1);
 
@@ -342,13 +360,21 @@ void init_Capture(void) {
 
 }
 
-Void Capture_Hwi_ISR(Void) {
+void Capture_Hwi_ISR(void) {
 
     TimerIntClear(TIMER0_BASE, TIMER_CAPA_EVENT);
     CurrentT = TimerValueGet(TIMER0_BASE, TIMER_A);
     Period = ((CurrentT - PrevT) & 0xFFFFFF) * PERIOD_TIME; //Accounts for Wrap Around
     PrevT = CurrentT;
-    FreqC = 1/((float)(Period));
+    FreqC = 1/Period;
+
+}
+
+void changePWM(void) {
+
+    PWMGenPeriodSet(PWM0_BASE, PWM_GEN_1, roundf((float)((gSystemClock/PWM_FREQUENCY) + Time_Difference)));
+    PWMPulseWidthSet(PWM0_BASE, PWM_OUT_2, roundf((float)(((gSystemClock/PWM_FREQUENCY) + Time_Difference)*0.4f)));
+    PWMPulseWidthSet(PWM0_BASE, PWM_OUT_3, roundf((float)(((gSystemClock/PWM_FREQUENCY) + Time_Difference)*0.4f)));
 
 }
 

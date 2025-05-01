@@ -30,5 +30,6 @@ int32_t getADCBufferIndex(void);
 
 //Lab 5 Functions:
 void init_Capture(void);
+void changePWM(void);
 
 #endif /* RANDOM_H_ */

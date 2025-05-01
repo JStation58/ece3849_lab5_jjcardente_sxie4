@@ -25,6 +25,7 @@
 #define ADC_OFFSET 2048
 #define ADC_BITS 12
 #define VIN_RANGE 3.3
+#define NSSCALE 1000000000
 
 const char * const gVoltageScaleStr[5] = {"100 mV", "200 mV", "500 mV", "1 V", "2 V"};
 const char * const gTimeScaleStr[12] = {"100 ms", "50 ms", "20 ms", "10 ms", "5 ms", "2 ms", "1 ms", "500 us", "200 us", "100 us", "50 us", "20 us"};
@@ -34,6 +35,7 @@ extern float cpu_load;
 extern volatile int tSet;
 extern int fft_mode;
 extern uint32_t FreqC;
+extern float Period;
 
 
 
@@ -90,9 +92,9 @@ void init_Measure(tContext * sContextAdr) {
     //Draw Trigger Mode
     GrContextForegroundSet(sContextAdr , ClrWhite);
     if (triggerType == 0) {
-        GrStringDraw(sContextAdr, "/ Trigger", 25, 5, 97, 1);
+        GrStringDraw(sContextAdr, "/ Trigger", 25, 5, 87, 1);
     } else if (triggerType == 1) {
-        GrStringDraw(sContextAdr, "\\ Trigger", 25, 5, 97, 1);
+        GrStringDraw(sContextAdr, "\\ Trigger", 25, 5, 87, 1);
     }
 
     //Draw Volts Per Division
@@ -118,10 +120,13 @@ void init_Measure(tContext * sContextAdr) {
     sprintf(cpuMessage, "CPU Load: %.2f%%", (cpu_load * 100));
     GrStringDraw(sContextAdr, cpuMessage , 25, 5, 117, 1);
 
-    //Display Counter Frequency
+    //Display Counter Frequency and Period
     char FreqMessage[50];
-    sprintf(FreqMessage, "Frequency: %d Hz", FreqC);
+    char PerMessage[50];
+    sprintf(FreqMessage, "Frequency: %d Hz", (int)FreqC);
     GrStringDraw(sContextAdr, FreqMessage , 35, 5, 107, 1);
+    sprintf(PerMessage, "Period: %d ns", (int)(Period * NSSCALE));
+    GrStringDraw(sContextAdr, PerMessage , 35, 5, 97, 1);
 
 }
 
