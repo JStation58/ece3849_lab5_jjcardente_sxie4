@@ -28,4 +28,7 @@ void init_ADC_Timer(void);
 void init_DMA(void);
 int32_t getADCBufferIndex(void);
 
+//Lab 5 Functions:
+void init_Capture(void);
+
 #endif /* RANDOM_H_ */

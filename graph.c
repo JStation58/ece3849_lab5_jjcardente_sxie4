@@ -33,6 +33,7 @@ extern volatile int triggerType;
 extern float cpu_load;
 extern volatile int tSet;
 extern int fft_mode;
+extern uint32_t FreqC;
 
 
 
@@ -89,9 +90,9 @@ void init_Measure(tContext * sContextAdr) {
     //Draw Trigger Mode
     GrContextForegroundSet(sContextAdr , ClrWhite);
     if (triggerType == 0) {
-        GrStringDraw(sContextAdr, "/ Trigger", 25, 5, 107, 1);
+        GrStringDraw(sContextAdr, "/ Trigger", 25, 5, 97, 1);
     } else if (triggerType == 1) {
-        GrStringDraw(sContextAdr, "\\ Trigger", 25, 5, 107, 1);
+        GrStringDraw(sContextAdr, "\\ Trigger", 25, 5, 97, 1);
     }
 
     //Draw Volts Per Division
@@ -116,6 +117,12 @@ void init_Measure(tContext * sContextAdr) {
     char cpuMessage[50];
     sprintf(cpuMessage, "CPU Load: %.2f%%", (cpu_load * 100));
     GrStringDraw(sContextAdr, cpuMessage , 25, 5, 117, 1);
+
+    //Display Counter Frequency
+    char FreqMessage[50];
+    sprintf(FreqMessage, "Frequency: %d Hz", FreqC);
+    GrStringDraw(sContextAdr, FreqMessage , 35, 5, 107, 1);
+
 }
 
 

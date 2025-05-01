@@ -29,6 +29,7 @@
 #include "inc/hw_memmap.h"
 #include "driverlib/gpio.h"
 #include "driverlib/pwm.h"
+#include "driverlib/timer.h"
 #include "driverlib/pin_map.h"
 #include "random.h"
 #include "driverlib/fpu.h"
@@ -74,7 +75,11 @@ volatile int16_t Scaled_Buffer[NFFT];
 //Oscilloscope Setting Variables
 int fft_mode = 0; //init false (0)
 
-
+uint32_t CurrentT = 0;
+uint32_t PrevT = 0;
+uint32_t Period = 0;
+uint32_t FreqC = 0;
+#define PERIOD_TIME 0.0000000083f
 
 
 uint32_t gSystemClock = 120000000; // [Hz] system clock frequency
@@ -98,10 +103,11 @@ int main(void) {
     ButtonInit(); //Initialize Buttons   NO CRASHES
     signal_init(); //GOOD
     init_CPU_Measure(); //GOOD
-//    IntMasterEnable(); //Enable Interrupts
     init_ADC1(); //GOOD READS A WAVE!
     init_ADC_Timer(); //GOOD
     init_DMA();
+    init_Capture();
+
 //
     init_Grid(&sContext); //GOOD
 
@@ -272,19 +278,19 @@ void signal_init() {
 
     // configure M0PWM2, at GPIO PF2, BoosterPack 1 header C1 pin 2
     SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
-    GPIOPinTypePWM(GPIO_PORTF_BASE, GPIO_PIN_2);
+    GPIOPinTypePWM(GPIO_PORTF_BASE, GPIO_PIN_2 | GPIO_PIN_3); //Modified code for 5
     GPIOPinConfigure(GPIO_PF2_M0PWM2);
-    GPIOPadConfigSet(GPIO_PORTF_BASE, GPIO_PIN_2,
-    GPIO_STRENGTH_2MA, GPIO_PIN_TYPE_STD);
+    GPIOPinConfigure(GPIO_PF3_M0PWM3); //Added code for second PWM channel
+    GPIOPadConfigSet(GPIO_PORTF_BASE, GPIO_PIN_2 | GPIO_PIN_3 ,GPIO_STRENGTH_2MA, GPIO_PIN_TYPE_STD); //Modified Code for 5
     // configure the PWM0 peripheral, gen 1, outputs 2 and 3
     SysCtlPeripheralEnable(SYSCTL_PERIPH_PWM0);
     // use system clock without division
     PWMClockSet(PWM0_BASE, PWM_SYSCLK_DIV_1);
-    PWMGenConfigure(PWM0_BASE, PWM_GEN_1,
-    PWM_GEN_MODE_DOWN | PWM_GEN_MODE_NO_SYNC);
+    PWMGenConfigure(PWM0_BASE, PWM_GEN_1, PWM_GEN_MODE_DOWN | PWM_GEN_MODE_NO_SYNC);
     PWMGenPeriodSet(PWM0_BASE, PWM_GEN_1, roundf((float)gSystemClock/PWM_FREQUENCY));
     PWMPulseWidthSet(PWM0_BASE, PWM_OUT_2,roundf((float)gSystemClock/PWM_FREQUENCY*0.4f));
-    PWMOutputState(PWM0_BASE, PWM_OUT_2_BIT, true);
+    PWMPulseWidthSet(PWM0_BASE, PWM_OUT_3, gSystemClock); //Added code for 5
+    PWMOutputState(PWM0_BASE, PWM_OUT_2_BIT | PWM_OUT_3_BIT, true); //Modified code for 5
     PWMGenEnable(PWM0_BASE, PWM_GEN_1);
 
 }
@@ -312,3 +318,38 @@ int Trigger(void) { // search for rising edge trigger
     }
     return x;
 }
+
+
+
+void init_Capture(void) {
+
+    // config GPIO PD0 as timer input T0CCP0 at BoosterPack Connector #1 pin 14
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOD);
+    GPIOPinTypeTimer(GPIO_PORTD_BASE, GPIO_PIN_0);
+    GPIOPinConfigure(GPIO_PD0_T0CCP0);
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);
+    TimerDisable(TIMER0_BASE, TIMER_BOTH);
+    TimerConfigure(TIMER0_BASE, TIMER_CFG_SPLIT_PAIR | TIMER_CFG_A_CAP_TIME_UP);
+    TimerControlEvent(TIMER0_BASE, TIMER_A, TIMER_EVENT_POS_EDGE);
+
+    // use maximum load value
+    TimerLoadSet(TIMER0_BASE, TIMER_A, 0xffff);
+
+    // use maximum prescale value
+    TimerPrescaleSet(TIMER0_BASE, TIMER_A, 0xff);
+    TimerIntEnable(TIMER0_BASE, TIMER_CAPA_EVENT);
+    TimerEnable(TIMER0_BASE, TIMER_A);
+
+}
+
+Void Capture_Hwi_ISR(Void) {
+
+    TimerIntClear(TIMER0_BASE, TIMER_CAPA_EVENT);
+    CurrentT = TimerValueGet(TIMER0_BASE, TIMER_A);
+    Period = ((CurrentT - PrevT) & 0xFFFFFF) * PERIOD_TIME; //Accounts for Wrap Around
+    PrevT = CurrentT;
+    FreqC = 1/((float)(Period));
+
+}
+
+
