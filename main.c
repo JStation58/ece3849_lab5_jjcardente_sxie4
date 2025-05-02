@@ -23,6 +23,9 @@
 
 #include "buttons.h" //Line added for the sake of the timer
 
+#include "inc/tm4c1294ncpdt.h"
+#include "audio_waveform.h"
+
 
 //Definitions and Inclusions for Clock Signal Generation
 #include <math.h>
@@ -77,10 +80,13 @@ int fft_mode = 0; //init false (0)
 
 uint32_t CurrentT = 0;
 uint32_t PrevT = 0;
-float Period = 0;
+uint32_t Period = 0;
 uint32_t FreqC = 0;
 #define PERIOD_TIME 0.0000000083f
 int Time_Difference = 0;
+const uint32_t PWM_Period = 258;
+uint32_t gPWMSample = 0; // PWM sample counter
+uint32_t gSamplingRateDivider = 29; // sampling rate divider
 
 
 uint32_t gSystemClock = 120000000; // [Hz] system clock frequency
@@ -257,6 +263,11 @@ void Button_Task(UArg arg1, UArg arg2) {
             Mailbox_post(mailbox0, &operation, BIOS_WAIT_FOREVER);
         }
 
+        if (presses & 16) { // EK-TM4C1294XL button 4 pressed
+            operation = 'a';
+            Mailbox_post(mailbox0, &operation, BIOS_WAIT_FOREVER);
+        }
+
     }
 }
 
@@ -281,11 +292,13 @@ void User_Input(UArg arg1, UArg arg2) {
             } else if (operation == 'f') {
                 fft_mode = fft_mode ^ 1;
             } else if (operation == '+') {
-                Time_Difference += 10;
+                Time_Difference += 100;
                 changePWM();
             } else if (operation == '-') {
-                Time_Difference -= 10;
+                Time_Difference -= 100;
                 changePWM();
+            } else if (operation == 'a') {
+                PWMIntEnable(PWM0_BASE, PWM_INT_GEN_2);
             }
         }
     }
@@ -296,20 +309,29 @@ void signal_init() {
 
     // configure M0PWM2, at GPIO PF2, BoosterPack 1 header C1 pin 2
     SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOG);
     GPIOPinTypePWM(GPIO_PORTF_BASE, GPIO_PIN_2 | GPIO_PIN_3); //Modified code for 5
+    GPIOPinTypePWM(GPIO_PORTG_BASE, GPIO_PIN_1);
     GPIOPinConfigure(GPIO_PF2_M0PWM2);
     GPIOPinConfigure(GPIO_PF3_M0PWM3); //Added code for second PWM channel
-    GPIOPadConfigSet(GPIO_PORTF_BASE, GPIO_PIN_2 | GPIO_PIN_3 ,GPIO_STRENGTH_2MA, GPIO_PIN_TYPE_STD); //Modified Code for 5
+    GPIOPinConfigure(GPIO_PG1_M0PWM5);
+    GPIOPadConfigSet(GPIO_PORTF_BASE, GPIO_PIN_2 | GPIO_PIN_3, GPIO_STRENGTH_2MA, GPIO_PIN_TYPE_STD); //Modified Code for 5
+    GPIOPadConfigSet(GPIO_PORTG_BASE, GPIO_PIN_1, GPIO_STRENGTH_2MA, GPIO_PIN_TYPE_STD);
     // configure the PWM0 peripheral, gen 1, outputs 2 and 3
     SysCtlPeripheralEnable(SYSCTL_PERIPH_PWM0);
     // use system clock without division
     PWMClockSet(PWM0_BASE, PWM_SYSCLK_DIV_1);
     PWMGenConfigure(PWM0_BASE, PWM_GEN_1, PWM_GEN_MODE_DOWN | PWM_GEN_MODE_NO_SYNC);
+    PWMGenConfigure(PWM0_BASE, PWM_GEN_2, PWM_GEN_MODE_DOWN | PWM_GEN_MODE_NO_SYNC);
     PWMGenPeriodSet(PWM0_BASE, PWM_GEN_1, roundf((float)gSystemClock/PWM_FREQUENCY));
+    PWMGenPeriodSet(PWM0_BASE, PWM_GEN_2, PWM_Period);
     PWMPulseWidthSet(PWM0_BASE, PWM_OUT_2, roundf((float)gSystemClock/PWM_FREQUENCY*0.4f));
     PWMPulseWidthSet(PWM0_BASE, PWM_OUT_3, roundf((float)gSystemClock/PWM_FREQUENCY*0.4f)); //Added code for 5
-    PWMOutputState(PWM0_BASE, PWM_OUT_2_BIT | PWM_OUT_3_BIT, true); //Modified code for 5
+    PWMPulseWidthSet(PWM0_BASE, PWM_OUT_5, (PWM_Period * 0.5f));
+    PWMOutputState(PWM0_BASE, PWM_OUT_2_BIT | PWM_OUT_3_BIT | PWM_OUT_5_BIT, true); //Modified code for 5
     PWMGenEnable(PWM0_BASE, PWM_GEN_1);
+    PWMGenEnable(PWM0_BASE, PWM_GEN_2);
+    PWMGenIntTrigEnable(PWM0_BASE, PWM_GEN_2, PWM_INT_CNT_ZERO); //Enables interrupts for Gen2
 
 }
 
@@ -364,9 +386,9 @@ void Capture_Hwi_ISR(void) {
 
     TimerIntClear(TIMER0_BASE, TIMER_CAPA_EVENT);
     CurrentT = TimerValueGet(TIMER0_BASE, TIMER_A);
-    Period = ((CurrentT - PrevT) & 0xFFFFFF) * PERIOD_TIME; //Accounts for Wrap Around
+    Period = ((CurrentT - PrevT) & 0xFFFFFF); //Accounts for Wrap Around
     PrevT = CurrentT;
-    FreqC = 1/Period;
+    FreqC = 1/(Period  * PERIOD_TIME);
 
 }
 
@@ -376,6 +398,22 @@ void changePWM(void) {
     PWMPulseWidthSet(PWM0_BASE, PWM_OUT_2, roundf((float)(((gSystemClock/PWM_FREQUENCY) + Time_Difference)*0.4f)));
     PWMPulseWidthSet(PWM0_BASE, PWM_OUT_3, roundf((float)(((gSystemClock/PWM_FREQUENCY) + Time_Difference)*0.4f)));
 
+}
+
+
+void PWM_ISR(void) {
+
+    PWMGenIntClear(PWM0_BASE, PWM_GEN_2, PWM_INT_CNT_ZERO); // clear PWM interrupt flag
+    // waveform sample index
+    int i = (gPWMSample++) / gSamplingRateDivider;
+    // write directly to the PWM compare B register
+    PWM0_2_CMPB_R = 1 + gWaveform[i];
+    if (i >= gWaveformSize - 1) { // if at the end of the waveform array
+        // disable these interrupts
+        PWMIntDisable(PWM0_BASE, PWM_INT_GEN_2);
+        // reset sample index so the waveform starts from the beginning
+        gPWMSample = 0;
+    }
 }
 
 

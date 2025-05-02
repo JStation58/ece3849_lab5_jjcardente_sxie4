@@ -35,7 +35,7 @@ extern float cpu_load;
 extern volatile int tSet;
 extern int fft_mode;
 extern uint32_t FreqC;
-extern float Period;
+extern uint32_t Period;
 
 
 
@@ -125,7 +125,7 @@ void init_Measure(tContext * sContextAdr) {
     char PerMessage[50];
     sprintf(FreqMessage, "Frequency: %d Hz", (int)FreqC);
     GrStringDraw(sContextAdr, FreqMessage , 35, 5, 107, 1);
-    sprintf(PerMessage, "Period: %d ns", (int)(Period * NSSCALE));
+    sprintf(PerMessage, "Period: %d ", Period);
     GrStringDraw(sContextAdr, PerMessage , 35, 5, 97, 1);
 
 }
