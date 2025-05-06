@@ -34,8 +34,8 @@ extern volatile int triggerType;
 extern float cpu_load;
 extern volatile int tSet;
 extern int fft_mode;
-extern uint32_t FreqC;
-extern uint32_t Period;
+extern volatile uint32_t FreqC;
+extern volatile uint32_t Period;
 
 
 

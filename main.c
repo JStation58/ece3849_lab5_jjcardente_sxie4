@@ -78,18 +78,16 @@ volatile int16_t Scaled_Buffer[NFFT];
 //Oscilloscope Setting Variables
 int fft_mode = 0; //init false (0)
 
-uint32_t CurrentT = 0;
-uint32_t PrevT = 0;
-uint32_t Period = 0;
-uint32_t FreqC = 0;
-#define PERIOD_TIME 0.0000000083f
-int Time_Difference = 0;
+//change all but freq to static local
+volatile uint32_t FreqC = 0;
+const float period_time = 0.0000000083f;
 const uint32_t PWM_Period = 258;
 uint32_t gPWMSample = 0; // PWM sample counter
 uint32_t gSamplingRateDivider = 29; // sampling rate divider
 
-
 uint32_t gSystemClock = 120000000; // [Hz] system clock frequency
+
+volatile uint32_t Period;
 
 /*
  *  ======== main ========
@@ -100,6 +98,7 @@ int main(void) {
 
     // Initialize the system clock to 120 MHz
     gSystemClock = SysCtlClockFreqSet(SYSCTL_XTAL_25MHZ | SYSCTL_OSC_MAIN | SYSCTL_USE_PLL | SYSCTL_CFG_VCO_480, 120000000);
+    Period = roundf((float)((gSystemClock/PWM_FREQUENCY)));
 
     Crystalfontz128x128_Init(); // Initialize the LCD display driver
     Crystalfontz128x128_SetOrientation(LCD_ORIENTATION_UP); // set screen orientation
@@ -144,7 +143,10 @@ void WaveformTask_func(UArg arg1, UArg arg2) {
 }
 
 void ProcessingTask_func(UArg arg1, UArg arg2) {
-    IntMasterEnable();
+
+
+    //Protection key for processing task
+    IArg pkey;
 
     // Kiss FFT config memory
     static char kiss_fft_cfg_buffer[KISS_FFT_CFG_SIZE];
@@ -172,6 +174,7 @@ void ProcessingTask_func(UArg arg1, UArg arg2) {
 
         // FFT Wave
         if(fft_mode){
+            pkey = GateHwi_enter(gateHwi1);
             for (i = 0; i < NFFT; i++){     // generate input wave
 //                in[i].r = sinf(20*PI*i/NFFT);   // Real part
                 in[i].r = ((float)Data_Buffer[i] - NFFT) * w[i];
@@ -186,6 +189,9 @@ void ProcessingTask_func(UArg arg1, UArg arg2) {
 
         } else{
             // Original Sampled Wave
+
+            pkey = GateHwi_enter(gateHwi1);
+
             float fScale = (VIN_RANGE * PIXELS_PER_DIV)/((1 << ADC_BITS) * fVoltsPerDiv[voltsPerDiv]);
 
             for (x = 0; x < 128; x++) {
@@ -196,7 +202,10 @@ void ProcessingTask_func(UArg arg1, UArg arg2) {
                     Scaled_Buffer[x] = 0;
                 }
             }
+
         }
+
+        GateHwi_leave(gateHwi1, pkey);
         Semaphore_post(DisplaySem);
         Semaphore_post(WaveformSem);
     }
@@ -292,10 +301,10 @@ void User_Input(UArg arg1, UArg arg2) {
             } else if (operation == 'f') {
                 fft_mode = fft_mode ^ 1;
             } else if (operation == '+') {
-                Time_Difference += 100;
+                Period += 100;
                 changePWM();
             } else if (operation == '-') {
-                Time_Difference -= 100;
+                Period -= 100;
                 changePWM();
             } else if (operation == 'a') {
                 PWMIntEnable(PWM0_BASE, PWM_INT_GEN_2);
@@ -382,21 +391,26 @@ void init_Capture(void) {
 
 }
 
+
 void Capture_Hwi_ISR(void) {
+
+    uint32_t CurrentT = 0;
+    static uint32_t PrevT = 0;
+    uint32_t period = 0;
 
     TimerIntClear(TIMER0_BASE, TIMER_CAPA_EVENT);
     CurrentT = TimerValueGet(TIMER0_BASE, TIMER_A);
-    Period = ((CurrentT - PrevT) & 0xFFFFFF); //Accounts for Wrap Around
+    period = ((CurrentT - PrevT) & 0xFFFF); //Accounts for Wrap Around
     PrevT = CurrentT;
-    FreqC = 1/(Period  * PERIOD_TIME);
+    FreqC = 120000000/period;
 
 }
 
 void changePWM(void) {
 
-    PWMGenPeriodSet(PWM0_BASE, PWM_GEN_1, roundf((float)((gSystemClock/PWM_FREQUENCY) + Time_Difference)));
-    PWMPulseWidthSet(PWM0_BASE, PWM_OUT_2, roundf((float)(((gSystemClock/PWM_FREQUENCY) + Time_Difference)*0.4f)));
-    PWMPulseWidthSet(PWM0_BASE, PWM_OUT_3, roundf((float)(((gSystemClock/PWM_FREQUENCY) + Time_Difference)*0.4f)));
+    PWMGenPeriodSet(PWM0_BASE, PWM_GEN_1, Period);
+    PWMPulseWidthSet(PWM0_BASE, PWM_OUT_2, (Period * 0.4f));
+    PWMPulseWidthSet(PWM0_BASE, PWM_OUT_3, (Period * 0.4f));
 
 }
 
@@ -415,5 +429,6 @@ void PWM_ISR(void) {
         gPWMSample = 0;
     }
 }
+
 
 
